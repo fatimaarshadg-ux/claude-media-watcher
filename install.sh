@@ -36,12 +36,12 @@ if [ -z "$py" ]; then
   exit 1
 fi
 echo "python: $py ($("$py" --version 2>&1))"
-if ! "$py" -c "import faster_whisper" >/dev/null 2>&1; then
-  echo "installing faster-whisper"
-  "$py" -m pip install --user --quiet faster-whisper 2>/dev/null \
-    || "$py" -m pip install --user --quiet --break-system-packages faster-whisper
+if ! "$py" -c "import faster_whisper, PIL" >/dev/null 2>&1; then
+  echo "installing faster-whisper and pillow"
+  "$py" -m pip install --user --quiet faster-whisper pillow 2>/dev/null \
+    || "$py" -m pip install --user --quiet --break-system-packages faster-whisper pillow
 fi
-"$py" -c "import faster_whisper; print('faster-whisper', faster_whisper.__version__)"
+"$py" -c "import faster_whisper, PIL; print('faster-whisper', faster_whisper.__version__, '/ pillow', PIL.__version__)"
 
 # 3. copy the tool into place (unless we are already running from there)
 if [ "$here" != "$target" ]; then

@@ -1,6 +1,6 @@
 # Installs claude-media-watcher on Windows.
 #   - ffmpeg (winget, Gyan.FFmpeg)
-#   - faster-whisper (pip, user install)
+#   - faster-whisper and pillow (pip, user install)
 #   - the media-watcher skill into %USERPROFILE%\.claude\skills
 # Safe to rerun. From the cloned repo folder:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
@@ -33,13 +33,13 @@ if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue }
 if (-not $py) { throw "Python not found. Install Python 3.9 or newer from python.org (tick 'Add to PATH') and rerun." }
 $py = $py.Source
 Write-Host "python: $py ($(& $py --version))"
-& $py -c "import faster_whisper" 2>$null
+& $py -c "import faster_whisper, PIL" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "installing faster-whisper"
-    & $py -m pip install --user --quiet faster-whisper
+    Write-Host "installing faster-whisper and pillow"
+    & $py -m pip install --user --quiet faster-whisper pillow
     if ($LASTEXITCODE -ne 0) { throw "pip install faster-whisper failed" }
 }
-& $py -c "import faster_whisper; print('faster-whisper', faster_whisper.__version__)"
+& $py -c "import faster_whisper, PIL; print('faster-whisper', faster_whisper.__version__, '/ pillow', PIL.__version__)"
 
 # 3. copy the tool into place (unless we are already running from there)
 if ($here -ne $target) {

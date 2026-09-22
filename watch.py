@@ -155,15 +155,61 @@ def find_font():
     return None
 
 
+DRAWTEXT_OK = True  # set in main() once we know which ffmpeg we have
+
+
+def ffmpeg_has_drawtext(ffmpeg):
+    # Homebrew's ffmpeg 9 formula dropped freetype, so drawtext is missing there.
+    # When it is missing we extract plain frames and stamp them with Pillow instead.
+    proc = subprocess.run([ffmpeg, "-hide_banner", "-filters"], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    return re.search(r"\sdrawtext\s", proc.stdout) is not None
+
+
 def timestamp_filter(size=28):
     # burn the running time into the top-left corner of every frame.
     # drawtext needs an explicit font file on Windows (fontconfig crashes without one).
+    if not DRAWTEXT_OK:
+        return "null"
     font = find_font()
     if not font:
         return "null"
     font = font.replace(":", "\\:")
     return (f"drawtext=fontfile='{font}':text='%{{pts\\:hms}}':x=8:y=8:fontsize={size}:fontcolor=white:"
             "box=1:boxcolor=black@0.6:boxborderw=6")
+
+
+def hms_ms(seconds):
+    # same shape as drawtext's %{pts:hms}: HH:MM:SS.mmm
+    seconds = max(0.0, float(seconds))
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    return f"{h:02d}:{m:02d}:{seconds % 60:06.3f}"
+
+
+def stamp_frames(items, size):
+    """Burn a label into each JPEG with Pillow. items = [(path, label), ...].
+    Used when ffmpeg has no drawtext filter. Returns False if Pillow is missing."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        print("warning: ffmpeg lacks drawtext and Pillow is not installed; frames carry no burned-in "
+              "timestamps. Use frames.json for times, or: python3 -m pip install --user pillow",
+              file=sys.stderr)
+        return False
+    font_path = find_font()
+    try:
+        font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default(size)
+    except Exception:
+        font = ImageFont.load_default()
+    for path, label in items:
+        im = Image.open(path).convert("RGB")
+        d = ImageDraw.Draw(im, "RGBA")
+        x0, y0, x1, y1 = d.textbbox((8, 8), label, font=font)
+        d.rectangle((x0 - 6, y0 - 6, x1 + 6, y1 + 6), fill=(0, 0, 0, 153))
+        d.text((8, 8), label, font=font, fill=(255, 255, 255, 255))
+        im.save(path, quality=90)
+    return True
 
 
 def extract_frames(ffmpeg, src, out, every, frame_width, tile):
@@ -176,13 +222,36 @@ def extract_frames(ffmpeg, src, out, every, frame_width, tile):
     fps = f"1/{every}"
     cols, rows = tile
 
-    run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
-         "-vf", f"fps={fps},scale={frame_width}:-2,{timestamp_filter(26)}",
-         "-q:v", "3", str(frames_dir / "f%04d.jpg")])
+    tile_vf = f"tile={cols}x{rows}:padding=4:margin=4:color=black"
+    if DRAWTEXT_OK:
+        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
+             "-vf", f"fps={fps},scale={frame_width}:-2,{timestamp_filter(26)}",
+             "-q:v", "3", str(frames_dir / "f%04d.jpg")])
 
-    run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
-         "-vf", f"fps={fps},scale=360:-2,{timestamp_filter(22)},tile={cols}x{rows}:padding=4:margin=4:color=black",
-         "-q:v", "3", str(sheets_dir / "sheet%03d.jpg")])
+        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
+             "-vf", f"fps={fps},scale=360:-2,{timestamp_filter(22)},{tile_vf}",
+             "-q:v", "3", str(sheets_dir / "sheet%03d.jpg")])
+    else:
+        # no drawtext: extract plain frames, stamp them with Pillow, then tile the stamped small ones
+        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
+             "-vf", f"fps={fps},scale={frame_width}:-2",
+             "-q:v", "3", str(frames_dir / "f%04d.jpg")])
+        big = sorted(frames_dir.glob("f*.jpg"))
+        stamp_frames([(f, hms_ms(i * every)) for i, f in enumerate(big)], 26)
+
+        small_dir = out / "_sheet_src"
+        if small_dir.exists():
+            shutil.rmtree(small_dir)
+        small_dir.mkdir()
+        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
+             "-vf", f"fps={fps},scale=360:-2",
+             "-q:v", "3", str(small_dir / "f%04d.jpg")])
+        small = sorted(small_dir.glob("f*.jpg"))
+        stamp_frames([(f, hms_ms(i * every)) for i, f in enumerate(small)], 22)
+        if small:
+            run([ffmpeg, "-y", "-hide_banner", "-framerate", "1", "-i", str(small_dir / "f%04d.jpg"),
+                 "-vf", tile_vf, "-q:v", "3", str(sheets_dir / "sheet%03d.jpg")])
+        shutil.rmtree(small_dir)
 
     frames = sorted(frames_dir.glob("f*.jpg"))
     sheets = sorted(sheets_dir.glob("sheet*.jpg"))
@@ -286,6 +355,8 @@ def zoom(ffmpeg, src, out, t, crop):
     vf += ["scale='min(1600,iw)':-2", timestamp_filter(30)]
     run([ffmpeg, "-y", "-hide_banner", "-ss", str(t), "-i", str(src), "-frames:v", "1",
          "-vf", ",".join(vf), "-q:v", "2", str(dest)])
+    if not DRAWTEXT_OK:
+        stamp_frames([(dest, hms_ms(t))], 30)
     print(str(dest))
 
 
@@ -305,6 +376,8 @@ def main():
     args = ap.parse_args()
 
     ffmpeg, ffprobe = need("ffmpeg"), need("ffprobe")
+    global DRAWTEXT_OK
+    DRAWTEXT_OK = ffmpeg_has_drawtext(ffmpeg)
     every = max(0.25, args.every)
     cols, rows = (int(v) for v in args.tile.lower().split("x"))
 

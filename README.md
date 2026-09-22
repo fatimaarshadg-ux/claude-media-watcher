@@ -19,7 +19,9 @@ Paste this repo link into Claude Code on any machine and say "install this". Cla
 3. Confirm the skill landed at `~/.claude/skills/media-watcher/SKILL.md`.
 4. Start a new Claude Code session so the skill is picked up.
 
-The installer adds ffmpeg (Homebrew or winget), the `faster-whisper` Python package, copies the skill into place, and downloads the Whisper `small` model once (about 480 MB).
+The installer adds ffmpeg (Homebrew or winget), the `faster-whisper` and `pillow` Python packages, copies the skill into place, and downloads the Whisper `small` model once (about 480 MB).
+
+If your ffmpeg was built without the `drawtext` filter (Homebrew's ffmpeg 9 formula dropped it), the tool notices and burns the timestamps into the frames with Pillow instead. The output is the same either way.
 
 To update later: `git -C ~/claude-media-watcher pull` and rerun the installer.
 
