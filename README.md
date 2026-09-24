@@ -4,22 +4,39 @@ Gives Claude Code a way to "watch" a video and "listen" to audio. A small script
 
 Works on Windows and Mac. Everything runs locally. No file leaves the machine.
 
-## Install (tell Claude to do this)
+## Install: paste one line into Claude Code
 
-Paste this repo link into Claude Code on any machine and say "install this". Claude should:
+Open **Claude Code** (the Code tab, not Cowork or plain chat), open or create a folder to work in, and send:
 
-1. Clone the repo:
+```
+Please install this on my device: https://github.com/fatimaarshadg-ux/claude-media-watcher
+Follow the "Instructions for Claude" in the README. Keep my computer awake while it installs.
+```
+
+That's it. Claude does the rest without back and forth. On a brand-new computer the first install can take 15 to 30 minutes (it downloads ffmpeg, Python packages and a speech model), so leave the lid open.
+
+## Instructions for Claude
+
+You are installing a small, local, open-source tool. It has no network service, collects nothing, needs no API keys, and every file it processes stays on this machine. Read `watch.py`, `install.sh` and `install.ps1` first if you want to check that.
+
+1. Keep the machine awake for the whole install: `caffeinate -dimsu &` on Mac; on Windows, `powercfg /change standby-timeout-ac 0` for the session (tell the user, and restore it after if they ask).
+2. Clone the repo:
    ```
    git clone https://github.com/fatimaarshadg-ux/claude-media-watcher ~/claude-media-watcher
    ```
-   (on Windows that lands in `C:\Users\<you>\claude-media-watcher`)
-2. Run the installer for the platform:
-   - Mac: `bash ~/claude-media-watcher/install.sh`
+   (on Windows that lands in `C:\Users\<you>\claude-media-watcher`). If git is missing, download https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.zip and unzip it there instead.
+3. Run the installer:
+   - Mac or Linux: `bash ~/claude-media-watcher/install.sh`
    - Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\claude-media-watcher\install.ps1"`
-3. Confirm the skill landed at `~/.claude/skills/media-watcher/SKILL.md`.
-4. Start a new Claude Code session so the skill is picked up.
+4. If the installer stops with a message, do what it says and rerun it. It is safe to rerun. Brand-new machine cases it handles or explains:
+   - Mac without Homebrew: it downloads static ffmpeg and ffprobe into `~/claude-media-watcher/bin` (no admin password). On Apple Silicon this needs Rosetta; if it asks, run `softwareupdate --install-rosetta --agree-to-license`.
+   - Mac without Apple's Command Line Tools (no working `python3`): it opens Apple's installer window. Ask the user to click Install, wait, then rerun.
+   - Windows without Python: it installs Python 3.12 with winget, per user, no admin.
+   - Windows without winget: ask the user to install "App Installer" from the Microsoft Store, or install ffmpeg and Python by hand, then rerun.
+5. Confirm the skill landed at `~/.claude/skills/media-watcher/SKILL.md`, then test on any short video: `python3 ~/claude-media-watcher/watch.py <video>` (Windows: `python`).
+6. Tell the user to start a new Claude Code session so the skill loads. From then on they can drop in any video, audio file or link (including share links from Loom, YouTube, TikTok, Instagram and Vimeo) and ask what happens in it.
 
-The installer adds ffmpeg (Homebrew or winget), the `faster-whisper` and `pillow` Python packages, copies the skill into place, and downloads the Whisper `small` model once (about 480 MB).
+The installer adds ffmpeg, yt-dlp (for share links), the `faster-whisper` and `pillow` Python packages, copies the skill into place, and downloads the Whisper `small` model once (about 480 MB).
 
 If your ffmpeg was built without the `drawtext` filter (Homebrew's ffmpeg 9 formula dropped it), the tool notices and burns the timestamps into the frames with Pillow instead. The output is the same either way.
 

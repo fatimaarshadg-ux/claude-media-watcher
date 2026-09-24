@@ -18,7 +18,7 @@ Run it with `python` on Windows and `python3` on Mac. It needs `ffmpeg` and `ffp
 
 ## Workflow
 
-1. **Get the file locally.** A dropped or pasted path is ready. A URL works directly as the argument (the script downloads it). For a Trybe submission, fetch a fresh signed `asset.url` from the Brand API first; they expire in about 20 minutes.
+1. **Get the file locally.** A dropped or pasted path is ready. A URL works directly as the argument: direct file links download as they are, and share pages (Loom, YouTube, TikTok, Instagram, Vimeo) are resolved with yt-dlp. For a Trybe submission, fetch a fresh signed `asset.url` from the Brand API first; they expire in about 20 minutes.
 
 2. **Run the script.**
    ```

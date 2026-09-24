@@ -49,7 +49,9 @@ def die(msg, code=1):
 
 
 def need(binary):
-    path = shutil.which(binary)
+    # The installer drops a private ffmpeg into <install folder>/bin on machines without a package manager.
+    local_bin = Path(__file__).resolve().parent / "bin"
+    path = shutil.which(binary) or shutil.which(binary, path=str(local_bin))
     if not path:
         die(f"{binary} not found on PATH. See README for install steps.")
     return path
@@ -70,7 +72,44 @@ def hms(seconds):
     return f"{h:02d}:{m:02d}:{s:05.2f}" if h else f"{m:02d}:{s:05.2f}"
 
 
+MEDIA_EXT = re.compile(r"\.(mp4|mov|m4v|webm|mkv|avi|mp3|m4a|wav|ogg|aac|flac)$", re.I)
+
+
+def fetch_page(url, dest_dir):
+    """Share pages (Loom, YouTube, TikTok, Instagram, Vimeo...) are not files; yt-dlp resolves them."""
+    # Prefer a standalone yt-dlp (Homebrew/winget): the pip one is frozen at an old release on Python 3.9,
+    # and sites like Loom change often enough that old releases stop working.
+    cli = shutil.which("yt-dlp") or shutil.which("yt-dlp", path=str(Path(__file__).resolve().parent / "bin"))
+    if cli:
+        print(f"resolving {url} with {cli}")
+        out = run([cli, "-q", "--no-warnings", "--print", "after_move:filepath", "-f",
+                   "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b", "--merge-output-format", "mp4",
+                   "-o", str(dest_dir / "%(id)s.%(ext)s"), url], capture=True)
+        lines = [l for l in out.splitlines() if l.strip()]
+        if lines and Path(lines[-1]).exists():
+            return Path(lines[-1])
+    try:
+        import yt_dlp
+    except ImportError:
+        die("this link is a share page, not a media file, and yt-dlp is not installed. "
+            "Run: python3 -m pip install --user yt-dlp  (or rerun the installer)")
+    print(f"resolving {url} with yt-dlp")
+    opts = {"outtmpl": str(dest_dir / "%(id)s.%(ext)s"), "quiet": True, "no_warnings": True,
+            "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b", "merge_output_format": "mp4"}
+    local_bin = Path(__file__).resolve().parent / "bin"
+    if not shutil.which("ffmpeg") and (local_bin / "ffmpeg").exists():
+        opts["ffmpeg_location"] = str(local_bin)
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        path = Path(ydl.prepare_filename(info))
+    if not path.exists():
+        path = path.with_suffix(".mp4")
+    return path
+
+
 def fetch(url, dest_dir):
+    if not MEDIA_EXT.search(re.sub(r"[?#].*$", "", url)):
+        return fetch_page(url, dest_dir)
     name = re.sub(r"[?#].*$", "", url.rsplit("/", 1)[-1]) or "download"
     if "." not in name:
         name += ".mp4"

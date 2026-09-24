@@ -27,19 +27,35 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
 }
 Write-Host "ffmpeg: $((Get-Command ffmpeg).Source)"
 
+# 1b. yt-dlp (for share links: Loom, YouTube, TikTok, Instagram)
+if (-not (Get-Command yt-dlp -ErrorAction SilentlyContinue) -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "installing yt-dlp with winget"
+    winget install --id yt-dlp.yt-dlp -e --accept-source-agreements --accept-package-agreements
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+
 # 2. python + faster-whisper
 $py = Get-Command python -ErrorAction SilentlyContinue
 if (-not $py) { $py = Get-Command py -ErrorAction SilentlyContinue }
+# The "python" on a brand-new Windows PC is often the Microsoft Store stub, which only opens the Store.
+if ($py -and $py.Source -like "*WindowsApps*") { $py = $null }
+if (-not $py -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "installing Python 3.12 with winget (per-user, no admin needed)"
+    winget install --id Python.Python.3.12 -e --scope user --accept-source-agreements --accept-package-agreements
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if ($py -and $py.Source -like "*WindowsApps*") { $py = Get-Command py -ErrorAction SilentlyContinue }
+}
 if (-not $py) { throw "Python not found. Install Python 3.9 or newer from python.org (tick 'Add to PATH') and rerun." }
 $py = $py.Source
 Write-Host "python: $py ($(& $py --version))"
-& $py -c "import faster_whisper, PIL" 2>$null
+& $py -c "import faster_whisper, PIL, yt_dlp" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "installing faster-whisper and pillow"
-    & $py -m pip install --user --quiet faster-whisper pillow
+    & $py -m pip install --user --quiet faster-whisper pillow yt-dlp
     if ($LASTEXITCODE -ne 0) { throw "pip install faster-whisper failed" }
 }
-& $py -c "import faster_whisper, PIL; print('faster-whisper', faster_whisper.__version__, '/ pillow', PIL.__version__)"
+& $py -c "import faster_whisper, PIL, yt_dlp; print('faster-whisper', faster_whisper.__version__, '/ pillow', PIL.__version__, '/ yt-dlp', yt_dlp.version.__version__)"
 
 # 3. copy the tool into place (unless we are already running from there)
 if ($here -ne $target) {
