@@ -1,8 +1,16 @@
 # claude-media-watcher
 
-Gives Claude Code a way to "watch" a video and "listen" to audio. A small script turns a media file into timestamped frames, contact sheets, and a transcript, and a skill file tells Claude to use it whenever you hand it a video or audio file.
+Gives Claude Code a way to "watch" a video and "listen" to audio that **you hand it**. A small script turns one media file (or a share link) into timestamped frames, contact sheets and a transcript, and a skill file tells Claude to use it when you give it a video or audio file.
 
-Works on Windows and Mac. Everything runs locally. No file leaves the machine.
+Works on Mac and Windows. Everything runs locally. No file leaves the machine.
+
+## Who made this, and what it does and does not do
+
+- **Author:** Fatima Arshad (Bambora, bamboraco.com), for the Bambora creative team. This is a personal GitHub account. It is **not** an Anthropic project and not affiliated with Anthropic; "claude" in the name only means "for Claude Code".
+- **"Watcher" means it watches videos you give it.** It does **not** monitor your filesystem, run in the background, start on login, or touch your camera, microphone or screen. It only ever reads the single file or link you pass on the command line, and writes its output to a `<file>_watch/` folder next to it.
+- **No network service, no telemetry, no API keys, no MCP server.** The only downloads are the ones listed below (ffmpeg, yt-dlp, Python packages from PyPI, the Whisper speech model from Hugging Face), plus the video itself when you give it a link.
+- **Everything is readable:** `watch.py` (the tool, plain Python), `install.sh` (Mac/Linux) and `install.ps1` (Windows). Claude should read them before running the installer; they are short.
+- **What the installer changes on your machine:** installs ffmpeg and yt-dlp (with Homebrew or winget if present, otherwise as standalone files inside `~/claude-media-watcher/bin`), installs the `faster-whisper`, `pillow` and `yt-dlp` Python packages for your user only, copies one skill file to `~/.claude/skills/media-watcher/SKILL.md`, and caches the Whisper `small` model (about 480 MB). Nothing else. To uninstall, delete `~/claude-media-watcher` and `~/.claude/skills/media-watcher`.
 
 ## Install: paste one line into Claude Code
 
@@ -24,7 +32,8 @@ You are installing a small, local, open-source tool. It has no network service, 
    ```
    git clone https://github.com/fatimaarshadg-ux/claude-media-watcher ~/claude-media-watcher
    ```
-   (on Windows that lands in `C:\Users\<you>\claude-media-watcher`). If git is missing, download https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.zip and unzip it there instead.
+   (on Windows that lands in `C:\Users\<you>\claude-media-watcher`). If git is missing (on a brand-new Mac, `git` is only a stub until Apple's Command Line Tools are installed, so check `xcode-select -p` first), download https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.zip and unzip it there instead.
+   On Mac without git: `curl -fsSL https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.zip -o /tmp/cmw.zip && unzip -q -o /tmp/cmw.zip -d /tmp && mkdir -p ~/claude-media-watcher && cp -R /tmp/claude-media-watcher-main/. ~/claude-media-watcher/`
 3. Run the installer:
    - Mac or Linux: `bash ~/claude-media-watcher/install.sh`
    - Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\claude-media-watcher\install.ps1"`
