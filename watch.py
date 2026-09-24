@@ -40,6 +40,13 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+import os
+import warnings
+
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")  # hide the "unauthenticated requests to the HF Hub" notice
+
+# faster-whisper's feature extractor trips harmless numpy divide/overflow warnings on some inputs.
+warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"faster_whisper\..*")
 from pathlib import Path
 
 
@@ -61,7 +68,10 @@ def run(cmd, capture=False):
     if capture:
         return subprocess.run(cmd, check=True, capture_output=True, text=True,
                               encoding="utf-8", errors="replace").stdout
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+                          encoding="utf-8", errors="replace")
+    if proc.returncode:
+        die(f"{Path(cmd[0]).name} failed ({proc.returncode}):\n" + proc.stderr.strip()[-1500:])
 
 
 def hms(seconds):
@@ -82,12 +92,15 @@ def fetch_page(url, dest_dir):
     cli = shutil.which("yt-dlp") or shutil.which("yt-dlp", path=str(Path(__file__).resolve().parent / "bin"))
     if cli:
         print(f"resolving {url} with {cli}")
+        # Point yt-dlp at the same ffmpeg we use, so it can join separate video and audio streams.
         out = run([cli, "-q", "--no-warnings", "--print", "after_move:filepath", "-f",
                    "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b", "--merge-output-format", "mp4",
+                   "--ffmpeg-location", str(Path(need("ffmpeg")).parent),
                    "-o", str(dest_dir / "%(id)s.%(ext)s"), url], capture=True)
         lines = [l for l in out.splitlines() if l.strip()]
         if lines and Path(lines[-1]).exists():
             return Path(lines[-1])
+        die(f"yt-dlp did not produce a file for {url}:\n{out.strip()[-800:]}")
     try:
         import yt_dlp
     except ImportError:
@@ -333,7 +346,7 @@ def transcribe(wav, out, model_name, lang):
         print("faster-whisper not installed; skipping transcript. "
               "Run: python -m pip install faster-whisper", file=sys.stderr)
         return None
-    print(f"transcribing with faster-whisper '{model_name}' (first run downloads the model)")
+    print(f"transcribing with faster-whisper '{model_name}' (the model downloads once, on first use)")
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
     segments, info = model.transcribe(str(wav), language=lang, vad_filter=True, beam_size=5)
     segs, lines = [], []

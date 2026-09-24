@@ -73,6 +73,7 @@ Write-Host "skill installed: $skillDir\SKILL.md"
 
 # 5. warm the default Whisper model so the first real run is fast
 Write-Host "downloading the Whisper 'small' model (one time, about 480 MB)"
+$env:HF_HUB_VERBOSITY = "error"
 & $py -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('model ready')"
 
 Write-Host ""
