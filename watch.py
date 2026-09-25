@@ -20,7 +20,8 @@ Usage:
   python watch.py VIDEO.mp4 --zoom 12.5 --crop 0.3,0.4,0.4,0.3   # one frame at 12.5s, cropped
 
 Options:
-  --every N       seconds between sampled frames (default 2, min 0.25)
+  --every N       seconds between sampled frames (default: 2, or wider on videos over
+                  10 minutes so there are about 300 frames; min 0.25)
   --tile CxR      contact sheet grid (default 4x4)
   --frame-width W width of individual frames in px (default 720)
   --model NAME    faster-whisper model: tiny, base, small, medium, large-v3 (default small)
@@ -44,6 +45,8 @@ import os
 import warnings
 
 os.environ.setdefault("HF_HUB_VERBOSITY", "error")  # hide the "unauthenticated requests to the HF Hub" notice
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # Windows without developer mode
 
 # faster-whisper's feature extractor trips harmless numpy divide/overflow warnings on some inputs.
 warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"faster_whisper\..*")
@@ -55,12 +58,20 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+LOCAL_BIN = Path(__file__).resolve().parent / "bin"
+INSTALL_HINT = ("run the installer again: bash ~/claude-media-watcher/install.sh on Mac/Linux, or "
+                "install.ps1 in %USERPROFILE%\\claude-media-watcher on Windows")
+
+
+def which(binary):
+    # The installer puts its own ffmpeg, ffprobe and yt-dlp in <install folder>/bin; prefer those.
+    return shutil.which(binary, path=str(LOCAL_BIN)) or shutil.which(binary)
+
+
 def need(binary):
-    # The installer drops a private ffmpeg into <install folder>/bin on machines without a package manager.
-    local_bin = Path(__file__).resolve().parent / "bin"
-    path = shutil.which(binary) or shutil.which(binary, path=str(local_bin))
+    path = which(binary)
     if not path:
-        die(f"{binary} not found on PATH. See README for install steps.")
+        die(f"{binary} not found. To fix, {INSTALL_HINT}.")
     return path
 
 
@@ -74,6 +85,23 @@ def run(cmd, capture=False):
         die(f"{Path(cmd[0]).name} failed ({proc.returncode}):\n" + proc.stderr.strip()[-1500:])
 
 
+def sample_frames(ffmpeg, src, every, vf_after, dest_pattern):
+    """Write one frame per `every` seconds and return each written frame's real time in seconds.
+    select keeps the first frame at or after each multiple of `every`, and showinfo reports its true
+    timestamp, so labels match the picture (the fps filter would shift them by up to half a gap)."""
+    vf = f"select='gte(t\\,{every}*selected_n)',showinfo" + (f",{vf_after}" if vf_after else "")
+    stderr = ""
+    for sync in (["-fps_mode", "vfr"], ["-vsync", "vfr"]):  # -fps_mode on ffmpeg 5.1+, -vsync before
+        proc = subprocess.run([ffmpeg, "-y", "-hide_banner", "-i", str(src), "-vf", vf, *sync,
+                               "-q:v", "3", str(dest_pattern)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+                              encoding="utf-8", errors="replace")
+        stderr = proc.stderr
+        if proc.returncode == 0:
+            return [float(t) for t in re.findall(r"\bpts_time:\s*(-?[\d.]+)", stderr)]
+    die(f"ffmpeg failed while sampling frames:\n{stderr.strip()[-1500:]}")
+
+
 def hms(seconds):
     seconds = max(0, float(seconds))
     h = int(seconds // 3600)
@@ -85,39 +113,59 @@ def hms(seconds):
 MEDIA_EXT = re.compile(r"\.(mp4|mov|m4v|webm|mkv|avi|mp3|m4a|wav|ogg|aac|flac)$", re.I)
 
 
+class _Quiet:
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+
+
 def fetch_page(url, dest_dir):
     """Share pages (Loom, YouTube, TikTok, Instagram, Vimeo...) are not files; yt-dlp resolves them."""
-    # Prefer a standalone yt-dlp (Homebrew/winget): the pip one is frozen at an old release on Python 3.9,
-    # and sites like Loom change often enough that old releases stop working.
-    cli = shutil.which("yt-dlp") or shutil.which("yt-dlp", path=str(Path(__file__).resolve().parent / "bin"))
+    # The standalone yt-dlp in <install folder>/bin is kept current by the installer; sites change often
+    # enough that old releases stop working. The Python module is the fallback.
+    fmt = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+    ffmpeg_dir = str(Path(need("ffmpeg")).parent)  # so yt-dlp can join separate video and audio streams
+    problem = ""
+    cli = which("yt-dlp")
     if cli:
-        print(f"resolving {url} with {cli}")
-        # Point yt-dlp at the same ffmpeg we use, so it can join separate video and audio streams.
-        out = run([cli, "-q", "--no-warnings", "--print", "after_move:filepath", "-f",
-                   "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b", "--merge-output-format", "mp4",
-                   "--ffmpeg-location", str(Path(need("ffmpeg")).parent),
-                   "-o", str(dest_dir / "%(id)s.%(ext)s"), url], capture=True)
-        lines = [l for l in out.splitlines() if l.strip()]
-        if lines and Path(lines[-1]).exists():
+        print(f"resolving {url} with yt-dlp")
+        proc = subprocess.run([cli, "-q", "--no-warnings", "--no-playlist", "--print", "after_move:filepath",
+                               "-f", fmt, "--merge-output-format", "mp4", "--ffmpeg-location", ffmpeg_dir,
+                               "-o", str(dest_dir / "%(id)s.%(ext)s"), url],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
+        lines = [l for l in proc.stdout.splitlines() if l.strip()]
+        if proc.returncode == 0 and lines and Path(lines[-1]).exists():
             return Path(lines[-1])
-        die(f"yt-dlp did not produce a file for {url}:\n{out.strip()[-800:]}")
+        problem = (proc.stderr or proc.stdout).strip()[-800:]
     try:
         import yt_dlp
     except ImportError:
-        die("this link is a share page, not a media file, and yt-dlp is not installed. "
-            "Run: python3 -m pip install --user yt-dlp  (or rerun the installer)")
-    print(f"resolving {url} with yt-dlp")
+        die(f"could not download {url}.\n{problem}\nIf the link is private, download the video yourself and "
+            f"pass the file instead. Otherwise {INSTALL_HINT}.")
     opts = {"outtmpl": str(dest_dir / "%(id)s.%(ext)s"), "quiet": True, "no_warnings": True,
-            "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b", "merge_output_format": "mp4"}
-    local_bin = Path(__file__).resolve().parent / "bin"
-    if not shutil.which("ffmpeg") and (local_bin / "ffmpeg").exists():
-        opts["ffmpeg_location"] = str(local_bin)
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        path = Path(ydl.prepare_filename(info))
+            "noplaylist": True, "format": fmt, "merge_output_format": "mp4", "ffmpeg_location": ffmpeg_dir,
+            "logger": _Quiet()}  # errors are reported once, below
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            path = Path(ydl.prepare_filename(info))
+    except Exception as e:
+        die(f"could not download {url}: {problem or e}\n"
+            "If the link is private or needs a login, download the video yourself and pass the file instead.")
     if not path.exists():
         path = path.with_suffix(".mp4")
     return path
+
+
+def ssl_context():
+    # A private Python may not see the system certificates; certifi (installed with faster-whisper) has them.
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 def fetch(url, dest_dir):
@@ -128,9 +176,15 @@ def fetch(url, dest_dir):
         name += ".mp4"
     dest = dest_dir / name
     print(f"downloading {url} -> {dest}")
-    req = urllib.request.Request(url, headers={"User-Agent": "claude-media-watcher/1.0"})
-    with urllib.request.urlopen(req) as r, open(dest, "wb") as f:
-        shutil.copyfileobj(r, f)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (claude-media-watcher)"})
+    try:
+        with urllib.request.urlopen(req, context=ssl_context(), timeout=60) as r, open(dest, "wb") as f:
+            shutil.copyfileobj(r, f)
+    except Exception as e:
+        if dest.exists():
+            dest.unlink()
+        print(f"direct download failed ({e}); trying yt-dlp")
+        return fetch_page(url, dest_dir)
     return dest
 
 
@@ -239,27 +293,43 @@ def hms_ms(seconds):
     return f"{h:02d}:{m:02d}:{seconds % 60:06.3f}"
 
 
-def stamp_frames(items, size):
-    """Burn a label into each JPEG with Pillow. items = [(path, label), ...].
-    Used when ffmpeg has no drawtext filter. Returns False if Pillow is missing."""
+def pillow():
     try:
         from PIL import Image, ImageDraw, ImageFont
+        return Image, ImageDraw, ImageFont
     except ImportError:
-        print("warning: ffmpeg lacks drawtext and Pillow is not installed; frames carry no burned-in "
-              "timestamps. Use frames.json for times, or: python3 -m pip install --user pillow",
-              file=sys.stderr)
-        return False
+        return None
+
+
+def load_font(size):
+    _, _, ImageFont = pillow()
     font_path = find_font()
     try:
-        font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default(size)
+        return ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default(size)
     except Exception:
-        font = ImageFont.load_default()
+        return ImageFont.load_default()
+
+
+def stamp(im, label, font):
+    """Burn a label into the top-left corner of a Pillow image, in place."""
+    _, ImageDraw, _ = pillow()
+    d = ImageDraw.Draw(im, "RGBA")
+    x0, y0, x1, y1 = d.textbbox((8, 8), label, font=font)
+    d.rectangle((x0 - 6, y0 - 6, x1 + 6, y1 + 6), fill=(0, 0, 0, 153))
+    d.text((8, 8), label, font=font, fill=(255, 255, 255, 255))
+
+
+def stamp_frames(items, size):
+    """Burn a label into each JPEG with Pillow. items = [(path, label), ...]. False if Pillow is missing."""
+    if not pillow():
+        print("warning: frames carry no burned-in timestamps (Pillow missing). Use frames.json for times.",
+              file=sys.stderr)
+        return False
+    Image = pillow()[0]
+    font = load_font(size)
     for path, label in items:
         im = Image.open(path).convert("RGB")
-        d = ImageDraw.Draw(im, "RGBA")
-        x0, y0, x1, y1 = d.textbbox((8, 8), label, font=font)
-        d.rectangle((x0 - 6, y0 - 6, x1 + 6, y1 + 6), fill=(0, 0, 0, 153))
-        d.text((8, 8), label, font=font, fill=(255, 255, 255, 255))
+        stamp(im, label, font)
         im.save(path, quality=90)
     return True
 
@@ -271,46 +341,48 @@ def extract_frames(ffmpeg, src, out, every, frame_width, tile):
         if d.exists():
             shutil.rmtree(d)
         d.mkdir()
-    fps = f"1/{every}"
     cols, rows = tile
+    per_sheet = cols * rows
 
-    tile_vf = f"tile={cols}x{rows}:padding=4:margin=4:color=black"
-    if DRAWTEXT_OK:
-        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
-             "-vf", f"fps={fps},scale={frame_width}:-2,{timestamp_filter(26)}",
-             "-q:v", "3", str(frames_dir / "f%04d.jpg")])
-
-        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
-             "-vf", f"fps={fps},scale=360:-2,{timestamp_filter(22)},{tile_vf}",
-             "-q:v", "3", str(sheets_dir / "sheet%03d.jpg")])
-    else:
-        # no drawtext: extract plain frames, stamp them with Pillow, then tile the stamped small ones
-        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
-             "-vf", f"fps={fps},scale={frame_width}:-2",
-             "-q:v", "3", str(frames_dir / "f%04d.jpg")])
+    if pillow():
+        # One decode pass: plain frames from ffmpeg, then Pillow stamps the time on each and builds
+        # contact sheets that are only as big as the frames they hold.
+        times = sample_frames(ffmpeg, src, every, f"scale={frame_width}:-2", frames_dir / "f%04d.jpg")
+        Image = pillow()[0]
+        big_font, small_font = load_font(26), load_font(22)
         big = sorted(frames_dir.glob("f*.jpg"))
-        stamp_frames([(f, hms_ms(i * every)) for i, f in enumerate(big)], 26)
-
-        small_dir = out / "_sheet_src"
-        if small_dir.exists():
-            shutil.rmtree(small_dir)
-        small_dir.mkdir()
-        run([ffmpeg, "-y", "-hide_banner", "-i", str(src),
-             "-vf", f"fps={fps},scale=360:-2",
-             "-q:v", "3", str(small_dir / "f%04d.jpg")])
-        small = sorted(small_dir.glob("f*.jpg"))
-        stamp_frames([(f, hms_ms(i * every)) for i, f in enumerate(small)], 22)
-        if small:
-            run([ffmpeg, "-y", "-hide_banner", "-framerate", "1", "-i", str(small_dir / "f%04d.jpg"),
-                 "-vf", tile_vf, "-q:v", "3", str(sheets_dir / "sheet%03d.jpg")])
-        shutil.rmtree(small_dir)
+        pad = 4
+        for n, lo in enumerate(range(0, len(big), per_sheet), start=1):
+            thumbs = []
+            for i in range(lo, min(lo + per_sheet, len(big))):
+                label = hms_ms(times[i] if i < len(times) else i * every)
+                im = Image.open(big[i]).convert("RGB")
+                small = im.resize((360, max(2, round(im.height * 360 / im.width))))
+                stamp(im, label, big_font)
+                im.save(big[i], quality=90)
+                stamp(small, label, small_font)
+                thumbs.append(small)
+            w = max(t.width for t in thumbs)
+            h = max(t.height for t in thumbs)
+            c = min(cols, len(thumbs))
+            r = -(-len(thumbs) // cols)
+            sheet = Image.new("RGB", (c * w + (c + 1) * pad, r * h + (r + 1) * pad), "black")
+            for k, t in enumerate(thumbs):
+                sheet.paste(t, (pad + (k % cols) * (w + pad), pad + (k // cols) * (h + pad)))
+            sheet.save(sheets_dir / f"sheet{n:03d}.jpg", quality=85)
+    else:
+        # No Pillow: let ffmpeg burn the time in (if it has drawtext) and tile the sheets.
+        tile_vf = f"tile={cols}x{rows}:padding=4:margin=4:color=black"
+        times = sample_frames(ffmpeg, src, every, f"scale={frame_width}:-2,{timestamp_filter(26)}",
+                              frames_dir / "f%04d.jpg")
+        sample_frames(ffmpeg, src, every, f"scale=360:-2,{timestamp_filter(22)},{tile_vf}",
+                      sheets_dir / "sheet%03d.jpg")
 
     frames = sorted(frames_dir.glob("f*.jpg"))
     sheets = sorted(sheets_dir.glob("sheet*.jpg"))
-    per_sheet = cols * rows
     index = []
     for i, f in enumerate(frames):
-        t = i * every
+        t = times[i] if i < len(times) else i * every
         index.append({
             "file": f.name, "seconds": round(t, 3), "time": hms(t),
             "sheet": sheets[i // per_sheet].name if sheets and i // per_sheet < len(sheets) else None,
@@ -343,8 +415,8 @@ def transcribe(wav, out, model_name, lang):
     try:
         from faster_whisper import WhisperModel
     except ImportError:
-        print("faster-whisper not installed; skipping transcript. "
-              "Run: python -m pip install faster-whisper", file=sys.stderr)
+        print(f"faster-whisper is not available, so there is no transcript. To fix, {INSTALL_HINT}.",
+              file=sys.stderr)
         return None
     print(f"transcribing with faster-whisper '{model_name}'")
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
@@ -404,10 +476,10 @@ def zoom(ffmpeg, src, out, t, crop):
     if crop:
         x, y, w, h = crop
         vf.append(f"crop=iw*{w}:ih*{h}:iw*{x}:ih*{y}")
-    vf += ["scale='min(1600,iw)':-2", timestamp_filter(30)]
+    vf += ["scale='min(1600,iw)':-2", "null" if pillow() else timestamp_filter(30)]
     run([ffmpeg, "-y", "-hide_banner", "-ss", str(t), "-i", str(src), "-frames:v", "1",
          "-vf", ",".join(vf), "-q:v", "2", str(dest)])
-    if not DRAWTEXT_OK:
+    if pillow() or not DRAWTEXT_OK:
         stamp_frames([(dest, hms_ms(t))], 30)
     print(str(dest))
 
@@ -415,7 +487,7 @@ def zoom(ffmpeg, src, out, t, crop):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("source")
-    ap.add_argument("--every", type=float, default=2.0)
+    ap.add_argument("--every", type=float, default=None)
     ap.add_argument("--tile", default="4x4")
     ap.add_argument("--frame-width", type=int, default=720)
     ap.add_argument("--model", default="small")
@@ -430,7 +502,6 @@ def main():
     ffmpeg, ffprobe = need("ffmpeg"), need("ffprobe")
     global DRAWTEXT_OK
     DRAWTEXT_OK = ffmpeg_has_drawtext(ffmpeg)
-    every = max(0.25, args.every)
     cols, rows = (int(v) for v in args.tile.lower().split("x"))
 
     if re.match(r"^https?://", args.source):
@@ -456,6 +527,11 @@ def main():
     print(f"{meta['duration']}  {meta.get('width', '?')}x{meta.get('height', '?')}  "
           f"video={meta['has_video']} audio={meta['has_audio']}")
 
+    if args.every is not None:
+        every = max(0.25, args.every)
+    else:
+        # 2s by default; on long videos widen the gap so there are about 300 frames to read.
+        every = 2.0 if meta["duration_seconds"] <= 600 else float(math.ceil(meta["duration_seconds"] / 300))
     frames, sheets, per_sheet = [], [], cols * rows
     if meta["has_video"] and not args.no_frames:
         frames, sheets, per_sheet = extract_frames(ffmpeg, src, out, every, args.frame_width, (cols, rows))

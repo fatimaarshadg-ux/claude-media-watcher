@@ -1,73 +1,107 @@
 # claude-media-watcher
 
-Gives Claude Code a way to "watch" a video and "listen" to audio that **you hand it**. A small script turns one media file (or a share link) into timestamped frames, contact sheets and a transcript, and a skill file tells Claude to use it when you give it a video or audio file.
+**Let Claude Code watch videos and listen to audio.** Give it a video file, a voice note, or a YouTube / TikTok / Instagram / Loom / Vimeo link and ask anything: "what happens in this?", "summarize this meeting", "transcribe this", "review this ad", "does this video follow my checklist?".
 
-Works on Mac and Windows. Everything runs locally. No file leaves the machine.
+It works by turning the video into timestamped pictures and a written transcript that Claude can read. It runs on your own computer, free, with no account or API key. Works on Mac, Windows and Linux.
 
-## Who made this, and what it does and does not do
+## Install (one line)
 
-- **Author:** Fatima Arshad (Bambora, bamboraco.com), for the Bambora creative team. This is a personal GitHub account. It is **not** an Anthropic project and not affiliated with Anthropic; "claude" in the name only means "for Claude Code".
-- **"Watcher" means it watches videos you give it.** It does **not** monitor your filesystem, run in the background, start on login, or touch your camera, microphone or screen. It only ever reads the single file or link you pass on the command line, and writes its output to a `<file>_watch/` folder next to it.
-- **No network service, no telemetry, no API keys, no MCP server.** The only downloads are the ones listed below (ffmpeg, yt-dlp, Python packages from PyPI, the Whisper speech model from Hugging Face), plus the video itself when you give it a link.
-- **Everything is readable:** `watch.py` (the tool, plain Python), `install.sh` (Mac/Linux) and `install.ps1` (Windows). Claude should read them before running the installer; they are short.
-- **What the installer changes on your machine:** installs ffmpeg and yt-dlp (with Homebrew or winget if present, otherwise as standalone files inside `~/claude-media-watcher/bin`), installs the `faster-whisper`, `pillow` and `yt-dlp` Python packages for your user only, copies one skill file to `~/.claude/skills/media-watcher/SKILL.md`, and caches the Whisper `small` model (about 480 MB). Nothing else. To uninstall, delete `~/claude-media-watcher` and `~/.claude/skills/media-watcher`.
-
-## Install: paste one line into Claude Code
-
-Open **Claude Code** (the Code tab, not Cowork or plain chat), open or create a folder to work in, and send:
+Open **Claude Code** on your computer, open any folder, and send this message:
 
 ```
-Install this on my Claude Code: https://github.com/fatimaarshadg-ux/claude-media-watcher
+Install this for me: https://github.com/fatimaarshadg-ux/claude-media-watcher
 ```
 
-On a brand-new computer the first install can take 15 to 30 minutes (ffmpeg, Python packages and a speech model download once). The installer keeps a Mac awake while it runs; on Windows, keep the laptop plugged in and awake.
+That's it. Claude reads this page and does the rest. It takes about 3 to 15 minutes the first time, depending on your internet. When it's done, start a new Claude Code session and drop in a video.
 
-## Installation steps
+### Where to paste it (important)
 
-Read `watch.py`, `install.sh` and `install.ps1` first if you want to check them; they are short.
+It has to be **Claude Code running on your own computer**, because it installs a tool on that computer:
 
-1. Get the code into `~/claude-media-watcher` (on Windows `C:\Users\<you>\claude-media-watcher`):
-   - Already there (a previous install): `git -C ~/claude-media-watcher pull`
-   - Otherwise: `git clone https://github.com/fatimaarshadg-ux/claude-media-watcher ~/claude-media-watcher`
-   - No working git (on a brand-new Mac, `git` is only a stub until Apple's Command Line Tools are installed; `xcode-select -p` fails): `curl -fsSL https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.zip -o /tmp/cmw.zip && unzip -q -o /tmp/cmw.zip -d /tmp && mkdir -p ~/claude-media-watcher && cp -R /tmp/claude-media-watcher-main/. ~/claude-media-watcher/`
-2. Run the installer. It is safe to rerun.
-   - Mac or Linux: `bash ~/claude-media-watcher/install.sh`
-   - Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\claude-media-watcher\install.ps1"`
-3. If it stops with a message, it says what to do. The cases on a brand-new machine:
-   - Mac without Homebrew: handled. It downloads native static ffmpeg and ffprobe (Apple Silicon from ffmpeg.martin-riedl.de, Intel from evermeet.cx; both are the macOS builds linked from ffmpeg.org) and yt-dlp from its official GitHub releases into `~/claude-media-watcher/bin`. No admin password.
-   - Mac without Apple's Command Line Tools: it opens Apple's installer window. The user clicks Install, waits, and you rerun.
-   - Windows without Python: handled. It installs Python 3.12 with winget, per user, no admin.
-   - Windows without winget: the user installs "App Installer" from the Microsoft Store, then rerun.
-4. Check `~/.claude/skills/media-watcher/SKILL.md` exists, and test on any short video: `python3 ~/claude-media-watcher/watch.py <video>` (Windows: `python`).
-5. Tell the user to start a new Claude Code session so the skill loads. After that they can drop in any video, audio file or link (including Loom, YouTube, TikTok, Instagram and Vimeo share links) and ask what happens in it.
+| You are in | Works? | What to do |
+|---|---|---|
+| Claude desktop app, **Code** tab, with a folder on your computer | Yes | Paste the line there. |
+| `claude` in a terminal | Yes | Paste the line there. |
+| Claude desktop app, **Chat** or **Cowork** | No | These can't install tools on your computer. Switch to the **Code** tab (top of the app), pick any folder, and paste the same line. |
+| claude.ai in a web browser, or a cloud / remote Claude Code session | No | Those run on a server, not your computer. Open the Claude desktop app, go to the **Code** tab, and paste it there. No desktop app yet? Get it at claude.ai/download. |
 
-The installer adds ffmpeg, yt-dlp (for share links), the `faster-whisper` and `pillow` Python packages, copies the skill into place, and downloads the Whisper `small` model once (about 480 MB).
+## For Claude: how to install this
 
-If your ffmpeg was built without the `drawtext` filter (Homebrew's ffmpeg 9 formula dropped it), the tool notices and burns the timestamps into the frames with Pillow instead. The output is the same either way.
+You are probably reading this because the user pasted the link and asked you to install it. Follow these steps.
 
-To update later: `git -C ~/claude-media-watcher pull` and rerun the installer.
+**0. Check where you are running.** If you are not Claude Code with shell access to the user's own computer (for example Cowork, the Claude chat, claude.ai on the web, or a cloud or remote session), do not try to install. Tell the user, kindly and briefly: this tool needs Claude Code on their own computer; open the Claude desktop app, click the **Code** tab, choose any folder, and paste the same message there. Then stop.
 
-## Use
+**1. Tell the user what is about to happen**, in plain words, before running anything. Something like:
 
-Drop a video or audio file into Claude Code, or paste its path or a direct link, and ask for what you want: a review, a summary, a transcript, a check against a checklist. Claude runs the tool and reads the output.
+> I'll install claude-media-watcher. It lets me watch videos and listen to audio by turning them into timestamped pictures and a transcript. Everything stays in one folder in your home directory (`claude-media-watcher`), no admin password is needed, and nothing you watch gets uploaded anywhere. The first install downloads about 700 MB (a video toolkit, a private copy of Python, and a speech-to-text model) and takes 3 to 15 minutes. You may be asked to approve a few commands; they're all from this project.
 
-Manual use:
+**2. Download the code and run the installer.** The installer is safe to rerun: if anything stops it (a timeout, a dropped connection), run the same command again and it continues where it left off. Run it with the longest command timeout you have (10 minutes), or in the background and wait for it.
+
+- **Mac or Linux** (no git needed, works on a brand-new Mac):
+  ```
+  mkdir -p ~/claude-media-watcher && curl -fsSL https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C ~/claude-media-watcher && bash ~/claude-media-watcher/install.sh
+  ```
+- **Windows, from Git Bash** (Claude Code's usual shell on Windows):
+  ```
+  mkdir -p ~/claude-media-watcher && curl -fsSL https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C ~/claude-media-watcher && powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$USERPROFILE/claude-media-watcher/install.ps1"
+  ```
+- **Windows, from PowerShell:**
+  ```
+  $d="$env:USERPROFILE\claude-media-watcher"; New-Item -ItemType Directory -Force $d | Out-Null; curl.exe -fsSL https://github.com/fatimaarshadg-ux/claude-media-watcher/archive/refs/heads/main.tar.gz -o "$env:TEMP\cmw.tar.gz"; tar.exe -xzf "$env:TEMP\cmw.tar.gz" --strip-components=1 -C $d; powershell -NoProfile -ExecutionPolicy Bypass -File "$d\install.ps1"
+  ```
+
+While it runs, give the user a short update at each numbered step it prints (`[1/7]` to `[7/7]`) so they know it hasn't frozen. Step 6 (the speech model) is the slowest.
+
+**3. If it prints `INSTALL STOPPED`**, the line after it says why. Almost always it is the internet connection, or a firewall or VPN blocking GitHub or huggingface.co: say so in plain words and rerun once it's fixed. Don't try other install methods first.
+
+**4. When it prints `DONE`**, it has already tested itself on a generated clip. Tell the user:
+
+> Installed and tested. Now start a new Claude Code session (the skill only loads when a session starts). Then drop in a video or audio file, or paste a link, and ask me what happens in it.
+
+## What gets installed, and where
+
+Everything lives in one folder, `~/claude-media-watcher` (on Windows `C:\Users\<you>\claude-media-watcher`):
+
+- **ffmpeg** (reads video and audio). If the computer already has it, that one is used.
+- **yt-dlp** (downloads videos from share links). Updated every time the installer is rerun.
+- **A private Python** with **faster-whisper** (speech to text) and **Pillow** (images), set up with [uv](https://github.com/astral-sh/uv). It never touches any Python already on the computer.
+- **The tool**: `watch.py` plus the launchers `watch` (Mac, Linux, Git Bash) and `watch.cmd` (Windows).
+
+Outside that folder it writes only two things: the skill file at `~/.claude/skills/media-watcher/SKILL.md` (tells Claude Code when and how to use the tool) and the Whisper `small` speech model in `~/.cache/huggingface` (about 480 MB).
+
+**No admin password, no Homebrew, no Xcode, no winget, no Microsoft Store.** Downloads come only from GitHub (ffmpeg builds, yt-dlp, uv, this repo), python.org builds via uv, PyPI, huggingface.co (the speech model) and, on Mac, the ffmpeg builds linked from ffmpeg.org.
+
+**To update:** rerun the install command above. **To uninstall:** delete `~/claude-media-watcher`, `~/.claude/skills/media-watcher` and, if you want the space back, `~/.cache/huggingface`.
+
+## Privacy
+
+It only reads the one file or link you give it, and writes its output next to that file. It does not run in the background, watch folders, start on login, or use your camera, microphone or screen. No telemetry, no accounts, no API keys. The code is short and readable: `watch.py`, `install.sh`, `install.ps1`.
+
+"Watcher" means it watches the videos you hand it. Made by Fatima Arshad. Not an Anthropic project; "claude" in the name only means it is built for Claude Code.
+
+## Using it
+
+Once installed, just talk to Claude Code: drop a file in, paste a path or a link, and ask. Claude runs the tool and reads the results.
+
+By hand:
 
 ```
-python watch.py VIDEO.mp4                       # frames every 2s + transcript
-python watch.py VIDEO.mp4 --every 0.5           # finer sampling
-python watch.py VOICE.m4a --no-frames           # audio only
-python watch.py VIDEO.mp4 --zoom 12.5           # one full-res frame at 12.5s
-python watch.py VIDEO.mp4 --zoom 12.5 --crop 0.25,0.3,0.5,0.4
-python watch.py https://host/clip.mov --model medium --lang en
+~/claude-media-watcher/watch VIDEO.mp4                      # frames every 2s + transcript
+~/claude-media-watcher/watch VIDEO.mp4 --every 0.5          # finer sampling
+~/claude-media-watcher/watch VOICE.m4a --no-frames          # audio only
+~/claude-media-watcher/watch VIDEO.mp4 --zoom 12.5          # one full-size frame at 12.5s
+~/claude-media-watcher/watch VIDEO.mp4 --zoom 12.5 --crop 0.25,0.3,0.5,0.4
+~/claude-media-watcher/watch "https://www.youtube.com/watch?v=..." --model medium --lang en
 ```
 
-Output goes to `<file>_watch/` next to the input:
+On Windows PowerShell or cmd, use `%USERPROFILE%\claude-media-watcher\watch.cmd` instead of `~/claude-media-watcher/watch`.
+
+Output goes to `<file>_watch/` next to the input (for links, under `watch_downloads/` in the current folder):
 
 | file | what it is |
 |---|---|
 | `report.md` | metadata, sheet index, transcript, silence map |
-| `sheets/` | contact sheets, 16 timestamped frames each |
+| `sheets/` | contact sheets, up to 16 timestamped frames each |
 | `frames/` | individual timestamped frames |
 | `transcript.txt` / `transcript.json` | speech with start and end times |
 | `silence.txt` | stretches with no audible sound |
@@ -75,15 +109,18 @@ Output goes to `<file>_watch/` next to the input:
 
 ## Limits
 
-- Frames are sampled at an interval, not every frame. Default is one every 2 seconds. Go down to 0.25 for slow-motion detail.
-- Audio is transcribed to text. Claude gets the words and timing, not tone or music.
-- The Whisper `small` model runs on CPU. A one-minute clip takes roughly 10 to 30 seconds. Use `--model medium` for difficult audio and `--model tiny` for speed.
+- Frames are sampled, not every frame: one every 2 seconds by default, and wider on videos over 10 minutes (about 300 frames in total). Use `--every 0.5` for fast action.
+- Audio becomes text: Claude gets the words and their timing, not tone of voice or music.
+- Speech recognition runs on the CPU. A one-minute clip takes roughly 10 to 30 seconds. `--model medium` for difficult audio, `--model tiny` for speed.
+- Private or login-only links can't be downloaded. Download the video yourself and give Claude the file.
 
-## Layout
+## Files
 
 ```
 watch.py         the tool
-skill/SKILL.md   the Claude skill (copied to ~/.claude/skills/media-watcher/)
+watch            launcher for Mac, Linux and Git Bash
+watch.cmd        launcher for Windows PowerShell and cmd
+skill/SKILL.md   the Claude Code skill (copied to ~/.claude/skills/media-watcher/)
 install.sh       Mac and Linux installer
 install.ps1      Windows installer
 ```
