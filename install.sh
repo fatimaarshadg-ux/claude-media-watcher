@@ -85,7 +85,7 @@ if [ -z "$py" ] || ! "$py" -c "import sys; sys.exit(0 if sys.version_info >= (3,
 fi
 echo "python: $py ($("$py" --version 2>&1))"
 if ! "$py" -c "import faster_whisper, PIL, yt_dlp" >/dev/null 2>&1; then
-  echo "installing faster-whisper and pillow"
+  echo "installing the faster-whisper, pillow and yt-dlp Python packages"
   # Apple's Python takes a plain --user install. A Homebrew Python refuses --user installs (PEP 668)
   # unless --break-system-packages is given; that flag still only writes to this user's site-packages.
   "$py" -m pip install --user --quiet faster-whisper pillow yt-dlp \

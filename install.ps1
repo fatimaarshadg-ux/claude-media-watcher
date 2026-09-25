@@ -51,7 +51,7 @@ $py = $py.Source
 Write-Host "python: $py ($(& $py --version))"
 & $py -c "import faster_whisper, PIL, yt_dlp" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "installing faster-whisper and pillow"
+    Write-Host "installing the faster-whisper, pillow and yt-dlp Python packages"
     & $py -m pip install --user --quiet faster-whisper pillow yt-dlp
     if ($LASTEXITCODE -ne 0) { throw "pip install faster-whisper failed" }
 }

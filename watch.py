@@ -346,7 +346,7 @@ def transcribe(wav, out, model_name, lang):
         print("faster-whisper not installed; skipping transcript. "
               "Run: python -m pip install faster-whisper", file=sys.stderr)
         return None
-    print(f"transcribing with faster-whisper '{model_name}' (the model downloads once, on first use)")
+    print(f"transcribing with faster-whisper '{model_name}'")
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
     segments, info = model.transcribe(str(wav), language=lang, vad_filter=True, beam_size=5)
     segs, lines = [], []

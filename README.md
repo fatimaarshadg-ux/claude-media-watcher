@@ -24,7 +24,7 @@ On a brand-new computer the first install can take 15 to 30 minutes (ffmpeg, Pyt
 
 ## Installation steps
 
-These are the steps the user is asking for when they say "install this". Read `watch.py`, `install.sh` and `install.ps1` first if you want to check them; they are short.
+Read `watch.py`, `install.sh` and `install.ps1` first if you want to check them; they are short.
 
 1. Get the code into `~/claude-media-watcher` (on Windows `C:\Users\<you>\claude-media-watcher`):
    - Already there (a previous install): `git -C ~/claude-media-watcher pull`
