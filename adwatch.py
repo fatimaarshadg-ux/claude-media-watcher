@@ -54,9 +54,19 @@ def cut_frames(src, cuts, out, duration):
     out.mkdir(parents=True, exist_ok=True)
     for i, t in enumerate([0.0] + cuts):
         at = min(t + 0.15, max(duration - 0.05, 0))
-        dest = out / f"cut{i:03d}_{at:07.2f}s.jpg"
-        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{at:.2f}", "-i", str(src),
-             "-frames:v", "1", "-vf", "scale=360:-2", str(dest)])
+        # Container duration can run past the last video frame, so step back until a frame exists.
+        for back in (0, 0.3, 0.8, 1.5):
+            t_at = max(at - back, 0)
+            dest = out / f"cut{i:03d}_{t_at:07.2f}s.jpg"
+            run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{t_at:.2f}", "-i", str(src),
+                 "-frames:v", "1", "-vf", "scale=360:-2", str(dest)], capture=True)
+            if dest.exists() and dest.stat().st_size > 0:
+                break
+
+
+def has_audio(src):
+    r = run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(src)], capture=True)
+    return bool(r.stdout.strip())
 
 
 def split_stems(src, out):
@@ -175,6 +185,27 @@ def analyse(full, vocals, music, words, cuts, duration):
     }
 
 
+def analyse_silent(cuts, duration):
+    """The video file has no audio track at all (text-only or muted ad)."""
+    edges = [0.0] + cuts + [duration]
+    shots = [round(b - a, 2) for a, b in zip(edges, edges[1:]) if b - a > 0.05]
+    n = int(duration * 2) + 1
+    return {
+        "duration_s": round(duration, 2), "cuts": [round(c, 2) for c in cuts], "shot_count": len(shots),
+        "avg_shot_s": round(sum(shots) / len(shots), 2) if shots else None,
+        "shortest_shot_s": min(shots) if shots else None, "longest_shot_s": max(shots) if shots else None,
+        "first_cut_s": round(cuts[0], 2) if cuts else None,
+        "cuts_per_5s": [{"t": float(s), "cuts": sum(1 for c in cuts if s <= c < s + 5)} for s in range(0, int(duration) + 1, 5)],
+        "no_audio_track": True,
+        "speech": {"words": 0, "wpm_overall": 0, "first_word_s": None, "words_in_first_3s": "", "wpm_per_5s": [],
+                   "pauses": [], "voice_pitch_range_semitones": None},
+        "music": {"present": False, "share_of_runtime": 0, "tempo_bpm": 0, "median_brightness_hz": 0,
+                  "music_minus_voice_db": None, "energy_changes": [], "cuts_on_beat_share": None,
+                  "on_beat_by_chance": None, "beats": []},
+        "_curves": {"hop": 0.5, "music_db": [-100.0] * n, "voice_db": [-100.0] * n},
+    }
+
+
 def plot(res, dest):
     import matplotlib
     matplotlib.use("Agg")
@@ -211,6 +242,7 @@ def plot(res, dest):
 def write_md(res, dest, src_name):
     s, m = res["speech"], res["music"]
     L = [f"# Pacing and sound: {src_name}", "",
+         *(["**This video file has no audio track** (silent or text-only ad as delivered by the library)."] if res.get("no_audio_track") else []),
          f"- Length {res['duration_s']}s, {res['shot_count']} shots, average shot {res['avg_shot_s']}s "
          f"(shortest {res['shortest_shot_s']}s, longest {res['longest_shot_s']}s), first cut at {res['first_cut_s']}s.",
          f"- Speech: {s['words']} words, {s['wpm_overall']} words per minute, first word at {s['first_word_s']}s. "
@@ -254,10 +286,13 @@ def main():
 
     cuts = detect_cuts(src, a.scene)
     cut_frames(src, cuts, out / "cuts", dur)
-    full, vocals, music = split_stems(src, out / "stems")
-    words = transcribe_words(vocals, a.model)
-    (out / "words.json").write_text(json.dumps(words), encoding="utf-8")
-    res = analyse(full, vocals, music, words, cuts, dur)
+    if has_audio(src):
+        full, vocals, music = split_stems(src, out / "stems")
+        words = transcribe_words(vocals, a.model)
+        (out / "words.json").write_text(json.dumps(words), encoding="utf-8")
+        res = analyse(full, vocals, music, words, cuts, dur)
+    else:
+        res = analyse_silent(cuts, dur)
     plot(res, out / "timeline.png")
     write_md(res, out / "pacing.md", src.name)
     res.pop("_curves")
