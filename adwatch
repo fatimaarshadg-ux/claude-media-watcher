@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Runs adwatch.py (deep ad watch: cuts, music, pacing) with the private Python the installer set up. Usage: ~/claude-media-watcher/adwatch <file or link> [options]
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for py in "$dir/.venv/bin/python" "$dir/.venv/Scripts/python.exe"; do
+  if [ -x "$py" ]; then exec "$py" "$dir/adwatch.py" "$@"; fi
+done
+py="$(command -v python3 || command -v python || true)"
+if [ -z "$py" ]; then
+  echo "error: claude-media-watcher is not installed yet. Run: bash \"$dir/install.sh\"" >&2
+  exit 1
+fi
+exec "$py" "$dir/adwatch.py" "$@"

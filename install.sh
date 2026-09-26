@@ -111,7 +111,7 @@ step 4 "Setting up a private Python with the speech-to-text engine"
 export UV_PYTHON_INSTALL_DIR="$target/python" UV_CACHE_DIR="$target/.cache/uv" UV_NO_PROGRESS=1
 venv="$target/.venv"
 py="$venv/bin/python"
-packages=(faster-whisper pillow yt-dlp)
+packages=(faster-whisper pillow yt-dlp librosa demucs soundfile matplotlib)
 if [ ! -x "$bin/uv" ]; then
   if [ "$os" = "Darwin" ]; then triple=apple-darwin; else triple=unknown-linux-musl; fi
   if [ "$arch" = "arm64" ]; then triple="aarch64-$triple"; else triple="x86_64-$triple"; fi

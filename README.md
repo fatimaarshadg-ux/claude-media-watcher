@@ -124,3 +124,7 @@ skill/SKILL.md   the Claude Code skill (copied to ~/.claude/skills/media-watcher
 install.sh       Mac and Linux installer
 install.ps1      Windows installer
 ```
+
+## Deep ad watch
+
+`adwatch` (Mac/Linux) or `adwatch.cmd` (Windows) does everything `watch` does at a frame every 0.5 seconds, plus: every cut with a frame, a voice and music split, music tempo and energy changes, words per minute, pauses, voice animation, cuts on beat, and a `timeline.png`. See the skill file for how Claude reads it.

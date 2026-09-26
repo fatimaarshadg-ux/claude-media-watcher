@@ -125,7 +125,7 @@ if (Test-Path $uv) {
         Run $uv venv -q --clear --managed-python --python 3.12 $venv | Out-Null
     }
     if ((Test-Path $py) -and
-        ((Run $uv pip install -q --python $py faster-whisper pillow yt-dlp) -eq 0) -and
+        ((Run $uv pip install -q --python $py faster-whisper pillow yt-dlp librosa demucs soundfile matplotlib) -eq 0) -and
         ((Run $uv pip install -q --python $py --upgrade yt-dlp) -eq 0)) { $ready = $true }
 }
 if (-not $ready) {
@@ -141,7 +141,7 @@ if (-not $ready) {
     if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
     if ((Run $sysPy -m venv $venv) -ne 0) { Fail "could not create a Python environment." }
     Run $py -m pip install -q --disable-pip-version-check --upgrade pip | Out-Null
-    if ((Run $py -m pip install -q --disable-pip-version-check faster-whisper pillow yt-dlp) -ne 0) { Fail "could not install the Python packages." }
+    if ((Run $py -m pip install -q --disable-pip-version-check faster-whisper pillow yt-dlp librosa demucs soundfile matplotlib) -ne 0) { Fail "could not install the Python packages." }
 }
 if ((Run $py -c "import faster_whisper, PIL, yt_dlp") -ne 0) { Fail "the Python packages did not install correctly." }
 Say "ready ($(& $py --version 2>&1))"

@@ -56,3 +56,23 @@ Run the installer with a long timeout (10 minutes); if it is cut off, run it aga
 - The transcript is words and timing only: no tone of voice, music, or sound quality. The silence map shows stretches of 1.5 seconds or more with nothing audible.
 - Speech recognition can mishear names, brands and numbers. If a word matters, check it against on-screen text or ask.
 - Phone videos can carry a rotation flag. `report.md` shows the corrected width, height and rotation.
+
+## Ads: always use the deep watch (adwatch)
+
+For any ad (competitor ads, creator submissions, our own ads), use `adwatch` instead of `watch`. Fatima asked for this on 2026-09-26: no shortcuts, and music and pacing matter.
+
+```
+~/claude-media-watcher/adwatch "<file or url>" --out <dir>          (Mac)
+%USERPROFILE%\claude-media-watcher\adwatch.cmd "<file or url>" --out <dir>   (Windows)
+```
+
+It runs the normal watch at a frame every 0.5 seconds, then adds:
+- a frame just after **every cut** (`cuts/`), with exact cut times, shot lengths and cuts per 5 seconds
+- a split of **voice and music** (demucs), then music tempo (BPM), how much of the runtime has music, music level against the voice, brightness, and where the music rises or drops
+- word-level speech timing: **words per minute** per 5 seconds, every pause of 0.6s or more, what is said in the first 3 seconds, and how animated the voice is (pitch range)
+- whether cuts land on the beat, compared with chance
+- `timeline.png`: music level, voice level, beats, speech rate and cuts on one picture. Look at it.
+
+Read `pacing.md`, look at `timeline.png`, read every sheet in `watch/sheets/` and every frame in `cuts/`.
+
+Tell the user how you watch before you start: frames plus measured audio, not real-time viewing. Be upfront about limits: it does not name the song or judge taste, and faint music under loud speech can be missed. Never present a quick pass as a full watch.
