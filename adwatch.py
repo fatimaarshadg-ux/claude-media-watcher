@@ -285,6 +285,8 @@ def main():
     dur = float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(src)], capture=True).stdout.strip() or 0)
 
     cuts = detect_cuts(src, a.scene)
+    # Crossfades and jump cuts between similar shots score low; list them separately for a human check.
+    soft = [round(t, 2) for t in detect_cuts(src, 0.12) if all(abs(t - c) > 0.4 for c in cuts)]
     cut_frames(src, cuts, out / "cuts", dur)
     if has_audio(src):
         full, vocals, music = split_stems(src, out / "stems")
@@ -295,6 +297,10 @@ def main():
         res = analyse_silent(cuts, dur)
     plot(res, out / "timeline.png")
     write_md(res, out / "pacing.md", src.name)
+    res["possible_soft_cuts"] = soft
+    with open(out / "pacing.md", "a", encoding="utf-8") as f:
+        f.write("\n## Possible soft cuts (crossfades, jump cuts): check these in the 0.5s sheets\n\n"
+                + (", ".join(mmss(t) for t in soft) or "none") + "\n")
     res.pop("_curves")
     (out / "pacing.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
     print(f"done: {out}\n  {out/'pacing.md'}\n  {out/'timeline.png'}\n  {out/'watch'/'report.md'}\n  {len(cuts)} cuts in {out/'cuts'}")
