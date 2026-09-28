@@ -61,7 +61,7 @@ $arm = ($arch -eq "ARM64")
 Step 1 "Copying the tool into $target"
 New-Item -ItemType Directory -Force $target, $bin | Out-Null
 if ((Resolve-Path $here).Path.TrimEnd('\') -ne (Resolve-Path $target).Path.TrimEnd('\')) {
-    foreach ($f in "watch.py", "watch", "watch.cmd", "install.sh", "install.ps1", "README.md") {
+    foreach ($f in "watch.py", "watch", "watch.cmd", "adwatch.py", "adwatch", "adwatch.cmd", "install.sh", "install.ps1", "README.md") {
         $p = Join-Path $here $f
         if (Test-Path $p) { Copy-Item $p $target -Force }
     }

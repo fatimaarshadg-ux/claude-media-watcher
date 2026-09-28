@@ -52,7 +52,7 @@ fi
 step 1 "Copying the tool into $target"
 mkdir -p "$target" "$bin"
 if [ "$here" != "$target" ]; then
-  for f in watch.py watch watch.cmd install.sh install.ps1 README.md; do
+  for f in watch.py watch watch.cmd adwatch.py adwatch adwatch.cmd install.sh install.ps1 README.md; do
     [ -f "$here/$f" ] && cp "$here/$f" "$target/"
   done
   rm -rf "$target/skill"
